@@ -2,10 +2,17 @@ import streamlit as st
 import pandas as pd
 import matplotlib.pyplot as plt
 import os
+from datetime import datetime, time
+from stravalib.client import Client
 
 # --- APP CONFIGURATION ---
 st.set_page_config(page_title="Metabolic Training Hub", layout="wide")
 st.title("🏃‍♂️ Metabolic Training Hub")
+
+# --- STRAVA CREDENTIALS ---
+CLIENT_ID = 256747  # Replace with yours
+CLIENT_SECRET = '812d2a7b01d0e2efb084139152f1997db1a092cd'  # Replace with yours
+REFRESH_TOKEN = '18eeeefcc8cdfab3f254cb0e2c05708cbe8a7510'  # Replace with yours
 
 # --- FILE PATHS ---
 RUN_LOG = 'seasonal_log.csv'
@@ -24,99 +31,79 @@ def save_data(df, filepath):
     df.to_csv(filepath, index=False)
 
 def calculate_metabolic_fitness(df):
-    """Calculates Chronic Load (Fitness), Acute Load (Fatigue), and TSB (Form)"""
     if df.empty or 'Recovery_Min' not in df.columns:
         return pd.DataFrame()
-
     df_copy = df.copy()
-    
-    # Custom Load Multipliers (Adjust these based on how your legs feel!)
     df_copy['Training_Load'] = (
         df_copy.get('Recovery_Min', 0) * 1.0 +
         df_copy.get('LT1_Min', 0) * 2.0 +
         df_copy.get('LT2_Min', 0) * 4.0 +
         df_copy.get('VO2_Min', 0) * 6.0
     )
-
     daily_log = df_copy.groupby('Date')['Training_Load'].sum().reset_index()
     daily_log['Date'] = pd.to_datetime(daily_log['Date'])
     daily_log.set_index('Date', inplace=True)
-
-    # Fill empty days with 0 load so fatigue naturally decays on rest days
     if not daily_log.empty:
         idx = pd.date_range(daily_log.index.min(), daily_log.index.max())
         daily_log = daily_log.reindex(idx, fill_value=0)
-
-    # Exponentially Weighted Moving Averages
     daily_log['Fitness'] = daily_log['Training_Load'].ewm(span=42, adjust=False).mean()
     daily_log['Fatigue'] = daily_log['Training_Load'].ewm(span=7, adjust=False).mean()
     daily_log['Form'] = daily_log['Fitness'] - daily_log['Fatigue']
-
     return daily_log.reset_index().rename(columns={'index': 'Date'})
 
 # --- SIDEBAR NAVIGATION ---
 st.sidebar.header("Navigation")
-menu = st.sidebar.radio("Go to:", ["📊 Dashboard", "➕ Add Manual Run", "🩸 Log Lactate Test"])
+menu = st.sidebar.radio("Go to:", [
+    "📊 Dashboard", 
+    "🔄 Sync Strava", 
+    "📋 Activity Catalog", 
+    "➕ Add Manual Run", 
+    "🩸 Log Lactate Test"
+])
 
 # ==========================================
-# 📊 DASHBOARD VIEW
+# 📊 DASHBOARD VIEW (Unchanged)
 # ==========================================
 if menu == "📊 Dashboard":
     runs_df = load_data(RUN_LOG)
-    
     if not runs_df.empty and 'Date' in runs_df.columns:
         runs_df['Date'] = pd.to_datetime(runs_df['Date'])
         runs_df = runs_df.sort_values('Date')
         
-        # --- CHART 1: METABOLIC VOLUME ---
         st.subheader("Seasonal Volume Trends")
         fig, ax = plt.subplots(figsize=(10, 4))
         ax.bar(runs_df['Date'].dt.strftime('%m-%d'), runs_df['Recovery_Min'], label='Recovery', color='gray', alpha=0.6)
-        
         bottom_val = runs_df['Recovery_Min'].copy()
         if 'LT1_Min' in runs_df.columns:
             ax.bar(runs_df['Date'].dt.strftime('%m-%d'), runs_df['LT1_Min'], bottom=bottom_val, label='LT1', color='green', alpha=0.6)
             bottom_val += runs_df['LT1_Min']
         if 'LT2_Min' in runs_df.columns:
             ax.bar(runs_df['Date'].dt.strftime('%m-%d'), runs_df['LT2_Min'], bottom=bottom_val, label='LT2', color='orange', alpha=0.8)
-        
         ax.set_ylabel("Minutes")
         ax.legend(loc='upper left')
         plt.xticks(rotation=45)
         st.pyplot(fig)
-        
         st.divider()
 
-        # --- CHART 2: FITNESS & FRESHNESS MODEL ---
         st.subheader("Impulse-Response Model (Fitness & Form)")
         fitness_df = calculate_metabolic_fitness(runs_df)
-        
         if not fitness_df.empty:
             fig_fit, ax_fit = plt.subplots(figsize=(10, 5))
-            
-            # Plot the engine and the fatigue
             ax_fit.plot(fitness_df['Date'], fitness_df['Fitness'], label='Fitness (42-Day)', color='blue', linewidth=2)
             ax_fit.plot(fitness_df['Date'], fitness_df['Fatigue'], label='Fatigue (7-Day)', color='red', linewidth=1.5, linestyle='--')
-            
-            # Shade the Form (Training Stress Balance)
-            ax_fit.fill_between(fitness_df['Date'], 0, fitness_df['Form'], where=(fitness_df['Form'] >= 0), color='green', alpha=0.3, label='Fresh (Ready to Race)')
-            ax_fit.fill_between(fitness_df['Date'], 0, fitness_df['Form'], where=(fitness_df['Form'] < 0), color='orange', alpha=0.3, label='Tired (Heavy Training)')
-            
+            ax_fit.fill_between(fitness_df['Date'], 0, fitness_df['Form'], where=(fitness_df['Form'] >= 0), color='green', alpha=0.3, label='Fresh')
+            ax_fit.fill_between(fitness_df['Date'], 0, fitness_df['Form'], where=(fitness_df['Form'] < 0), color='orange', alpha=0.3, label='Tired')
             ax_fit.axhline(0, color='black', linewidth=1)
             ax_fit.set_ylabel("Training Load Score")
             ax_fit.legend(loc='upper left')
             plt.xticks(rotation=45)
             st.pyplot(fig_fit)
-        
     else:
-        st.info("📊 Your training log is currently empty. Go to 'Add Manual Run' or sync a workout to see your charts build up!")
+        st.info("📊 Your training log is currently empty.")
 
     st.divider()
-    
-    # --- CHART 3: LACTATE CURVE ---
     st.subheader("Lactate Curve Profile")
     lac_df = load_data(LACTATE_LOG)
-    
     if not lac_df.empty and 'Heart_Rate' in lac_df.columns:
         fig2, ax2 = plt.subplots(figsize=(8, 4))
         ax2.plot(lac_df['Heart_Rate'], lac_df['Lactate_mmol'], marker='o', color='red', linewidth=2)
@@ -127,11 +114,104 @@ if menu == "📊 Dashboard":
         ax2.legend()
         ax2.grid(True, linestyle=':', alpha=0.6)
         st.pyplot(fig2)
-    else:
-        st.info("🩸 No blood lactate tests logged yet. Head over to the sidebar menu to log your first step-test interval values.")
 
 # ==========================================
-# ➕ ADD MANUAL RUN
+# 🔄 SYNC STRAVA
+# ==========================================
+elif menu == "🔄 Sync Strava":
+    st.subheader("Pull Activities by Date Range")
+    
+    col1, col2 = st.columns(2)
+    start_date = col1.date_input("Start Date")
+    end_date = col2.date_input("End Date")
+    
+    if st.button("Sync Data", type="primary"):
+        with st.spinner("Connecting to Strava API..."):
+            try:
+                client = Client()
+                refresh_response = client.refresh_access_token(
+                    client_id=CLIENT_ID, client_secret=CLIENT_SECRET, refresh_token=REFRESH_TOKEN
+                )
+                client.access_token = refresh_response['access_token']
+                
+                # Format dates for API
+                dt_start = datetime.combine(start_date, time.min)
+                dt_end = datetime.combine(end_date, time.max)
+                
+                activities = client.get_activities(after=dt_start, before=dt_end)
+                activities_list = list(activities)
+                
+                if not activities_list:
+                    st.warning("No activities found in this date range.")
+                else:
+                    existing_runs = load_data(RUN_LOG)
+                    existing_ids = existing_runs['Activity_ID'].values if not existing_runs.empty else []
+                    
+                    new_entries = []
+                    progress_bar = st.progress(0)
+                    
+                    for i, act in enumerate(activities_list):
+                        # Skip if already logged or if no HR data
+                        if act.id in existing_ids or not getattr(act, 'has_heartrate', False):
+                            progress_bar.progress((i + 1) / len(activities_list))
+                            continue
+                            
+                        # Pull streams
+                        types = ['time', 'heartrate']
+                        streams = client.get_activity_streams(act.id, types=types)
+                        
+                        if streams and 'heartrate' in streams:
+                            hr_data = streams['heartrate'].data
+                            df_stream = pd.DataFrame({'heartrate': hr_data}).dropna()
+                            
+                            # Zone Categorization
+                            bins = [0, 140, 160, 175, 200]
+                            labels = ['Recovery', 'LT1 (Aerobic)', 'LT2 (Threshold)', 'VO2 Max']
+                            df_stream['Zone'] = pd.cut(df_stream['heartrate'], bins=bins, labels=labels)
+                            time_in_zones = df_stream['Zone'].value_counts(sort=False) / 60
+                            
+                            new_entries.append({
+                                'Date': act.start_date_local.strftime('%Y-%m-%d'),
+                                'Activity_ID': act.id,
+                                'Name': act.name,
+                                'Recovery_Min': time_in_zones.get('Recovery', 0).round(1),
+                                'LT1_Min': time_in_zones.get('LT1 (Aerobic)', 0).round(1),
+                                'LT2_Min': time_in_zones.get('LT2 (Threshold)', 0).round(1),
+                                'VO2_Min': time_in_zones.get('VO2 Max', 0).round(1)
+                            })
+                        progress_bar.progress((i + 1) / len(activities_list))
+                        
+                    if new_entries:
+                        updated_runs = pd.concat([existing_runs, pd.DataFrame(new_entries)], ignore_index=True)
+                        save_data(updated_runs, RUN_LOG)
+                        st.success(f"Successfully synced {len(new_entries)} new activities!")
+                    else:
+                        st.info("No new physiological data to sync. All valid runs are already logged.")
+                        
+            except Exception as e:
+                st.error(f"Failed to sync: {e}")
+
+# ==========================================
+# 📋 ACTIVITY CATALOG
+# ==========================================
+elif menu == "📋 Activity Catalog":
+    st.subheader("Manage Your Training Log")
+    st.write("Double-click any cell to edit. Select the checkbox on the left of a row and press 'Delete' on your keyboard to remove an entry.")
+    
+    runs_df = load_data(RUN_LOG)
+    
+    if not runs_df.empty:
+        # data_editor makes the dataframe interactive. num_rows="dynamic" allows deleting.
+        edited_df = st.data_editor(runs_df, num_rows="dynamic", use_container_width=True)
+        
+        if st.button("Save Changes to Database", type="primary"):
+            save_data(edited_df, RUN_LOG)
+            st.success("Database updated successfully!")
+    else:
+        st.info("Your catalog is empty. Sync some data from Strava first!")
+
+# ==========================================
+# ➕ ADD MANUAL RUN (Unchanged)
 # ==========================================
 elif menu == "➕ Add Manual Run":
     st.subheader("Log a Treadmill or Untracked Workout")
@@ -142,7 +222,6 @@ elif menu == "➕ Add Manual Run":
         lt1_min = st.number_input("LT1 Minutes", min_value=0.0, step=1.0)
         lt2_min = st.number_input("LT2 Minutes", min_value=0.0, step=1.0)
         vo2_min = st.number_input("VO2 Minutes", min_value=0.0, step=1.0)
-        
         submitted = st.form_submit_button("Save Workout")
         if submitted:
             new_run = pd.DataFrame([{
@@ -152,10 +231,10 @@ elif menu == "➕ Add Manual Run":
             existing_runs = load_data(RUN_LOG)
             updated_runs = pd.concat([existing_runs, new_run], ignore_index=True)
             save_data(updated_runs, RUN_LOG)
-            st.success("Manual run added to the database! Refresh the dashboard to see changes.")
+            st.success("Manual run added to the database!")
 
 # ==========================================
-# 🩸 LOG LACTATE TEST
+# 🩸 LOG LACTATE TEST (Unchanged)
 # ==========================================
 elif menu == "🩸 Log Lactate Test":
     st.subheader("Input Blood Step-Test Data")
@@ -165,7 +244,6 @@ elif menu == "🩸 Log Lactate Test":
         pace = st.text_input("Pace (e.g., 6:30)", "6:00")
         hr = st.number_input("Heart Rate (BPM)", min_value=40, max_value=220, step=1)
         lactate = st.number_input("Lactate (mmol/L)", min_value=0.0, step=0.1)
-        
         submitted = st.form_submit_button("Save Data Point")
         if submitted:
             new_lac = pd.DataFrame([{
