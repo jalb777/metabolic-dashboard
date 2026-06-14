@@ -51,6 +51,55 @@ def calculate_metabolic_fitness(df):
     daily_log['Form'] = daily_log['Fitness'] - daily_log['Fatigue']
     return daily_log.reset_index().rename(columns={'index': 'Date'})
 
+def generate_training_suggestions(fitness_df):
+    """Generates automated coaching insights based on the latest Form (TSB) value"""
+    if fitness_df.empty:
+        return None
+        
+    latest = fitness_df.iloc[-1]
+    form = latest['Form']
+    fitness = latest['Fitness']
+    
+    insights = {}
+    
+    if form < -30:
+        insights['status'] = "🚨 High Fatigue / Overreaching Risk"
+        insights['color'] = "error"
+        insights['advice'] = (
+            f"Your Form is critically low at {form:.1f}. You are deep in a high-fatigue state. "
+            "Prioritize strict active recovery (Zone 1) or a complete rest day to prevent injury and allowing adaptation."
+        )
+        insights['target_workout'] = "🧘 Easy 30-40 min Recovery Spin/Jog (Keep HR strictly below LT1)"
+        
+    elif -30 <= form <= -10:
+        insights['status'] = "🟢 Optimal Training Zone (Productive Overload)"
+        insights['color'] = "success"
+        insights['advice'] = (
+            f"Your Form is {form:.1f}. This is the 'sweet spot' for collegiate volume progression. "
+            "Your body is responding well to the current workload and accumulating chronic engine."
+        )
+        insights['target_workout'] = "⏱️ Split Threshold Block: e.g., 3x2 Mile at LT1/LT2 pace with controlled rest"
+        
+    elif -10 < form <= 5:
+        insights['status'] = "🟡 Neutral / Transition State"
+        insights['color'] = "warning"
+        insights['advice'] = (
+            f"Your Form is resting at {form:.1f}. You have absorbed recent microcycles. "
+            "This is a safe baseline to initiate a primary workout or standard aerobic maintenance volume."
+        )
+        insights['target_workout'] = "🏃‍♂️ Aerobic Base Building: 60-70 mins steady state at upper Zone 1 / entry LT1"
+        
+    else:
+        insights['status'] = "⚡ Fresh / Peaking State"
+        insights['color'] = "info"
+        insights['advice'] = (
+            f"Your Form is positive at +{form:.1f}. Systematic fatigue has cleared. "
+            "Your engine is fully primed for premium neural and metabolic output."
+        )
+        insights['target_workout'] = "🚀 High-End Quality: Short VO2 Max repetitions or an official time-trial/race execution"
+        
+    return insights
+
 # --- SIDEBAR NAVIGATION ---
 st.sidebar.header("Navigation")
 menu = st.sidebar.radio("Go to:", [
@@ -114,7 +163,13 @@ if menu == "📊 Dashboard":
         ax2.legend()
         ax2.grid(True, linestyle=':', alpha=0.6)
         st.pyplot(fig2)
+    st.subheader("💡 Automated Coaching Insights")
+    insights = generate_training_suggestions(fitness_df)
 
+    if insights:
+        st.markdown(f"### Current State: {insights['status']}")
+        st.info(insights['advice'])
+        st.markdown(f"**Recommended Target for Next Session:** {insights['target_workout']}")
 # ==========================================
 # 🔄 SYNC STRAVA
 # ==========================================
