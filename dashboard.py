@@ -175,6 +175,13 @@ if menu == "📊 Dashboard":
 # ==========================================
 elif menu == "🔄 Sync Strava":
     st.subheader("Pull Activities by Date Range")
+    st.info(
+        "**💡 Syncing Best Practices: The 120-Day Rule**\n\n"
+        "Please **do not** sync your entire all-time Strava history. "
+        "Because this platform uses an exponential impulse-response model to track your physiology, "
+        "any workout older than 4 to 5 months mathematically decays to 0% impact on your current fitness and fatigue scores. \n\n"
+        "**Recommendation:** Set your start date to roughly **90 to 120 days ago** (including any down weeks or injury blocks). "
+        "This gives the algorithm a perfect 'run-in' period to calibrate your baseline engine without slowing down the database."
     col1, col2 = st.columns(2)
     start_date = col1.date_input("Start Date")
     end_date = col2.date_input("End Date")
