@@ -183,7 +183,11 @@ if st.session_state.logged_in:
             # --- CHART 1: SEASONAL VOLUME ---
             st.subheader("Seasonal Volume Trends")
             fig, ax = plt.subplots(figsize=(10, 4))
-            ax.bar(runs_df['Date'].dt.strftime('%m-%d'), runs_df['Recovery_Min'], label='Recovery', color='gray', alpha=0.6)
+         
+            date_series = runs_df['Date'].dt.strftime('%m-%d').fillna('00-00')
+        
+            runs_df['Recovery_Min'] = pd.to_numeric(runs_df['Recovery_Min'], errors='coerce').fillna(0)
+            ax.bar(date_series, runs_df['Recovery_Min'], label='Recovery', color='gray', alpha=0.6)
             bottom_val = runs_df['Recovery_Min'].copy()
             if 'LT1_Min' in runs_df.columns:
                 ax.bar(runs_df['Date'].dt.strftime('%m-%d'), runs_df['LT1_Min'], bottom=bottom_val, label='LT1', color='green', alpha=0.6)
