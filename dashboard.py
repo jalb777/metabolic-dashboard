@@ -264,7 +264,7 @@ if st.session_state.logged_in:
                     comp_date = st.selectbox("🔴 Current Status", options=test_dates, index=len(test_dates)-1, format_func=lambda x: x.strftime('%b %d, %Y'))
                 
                 st.markdown("### 2. Predictive Simulator")
-                show_ghost = st.checkbox("🔮 Project Future Adaptation (Ghost Curve)")
+                show_ghost = st.checkbox("Curve Predictions")
                 shift_decimal = 0.0
                 
                 if show_ghost:
