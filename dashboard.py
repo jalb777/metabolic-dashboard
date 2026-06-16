@@ -98,7 +98,7 @@ if 'username' not in st.session_state:
 
 if not st.session_state.logged_in:
     st.title("🏃‍♂️ Training Log Analyzer ")
-    st.markdown("### Welcome to the Squad")
+    st.markdown("### Lets Go Hop")
     
     # Toggle between Login and Sign Up
     auth_mode = st.radio("Select an option:", ["Log In", "Create Account"], horizontal=True)
