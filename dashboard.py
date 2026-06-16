@@ -180,26 +180,37 @@ if st.session_state.logged_in:
             runs_df['Date'] = pd.to_datetime(runs_df['Date'])
             runs_df = runs_df.sort_values('Date')
             
-            # --- CHART 1: SEASONAL VOLUME ---
+        # --- CHART 1: SEASONAL VOLUME ---
             st.subheader("Seasonal Volume Trends")
             fig, ax = plt.subplots(figsize=(10, 4))
-         
-            date_series = runs_df['Date'].dt.strftime('%m-%d').fillna('00-00')
-        
-            runs_df['Recovery_Min'] = pd.to_numeric(runs_df['Recovery_Min'], errors='coerce').fillna(0)
-            ax.bar(date_series, runs_df['Recovery_Min'], label='Recovery', color='gray', alpha=0.6)
-            bottom_val = runs_df['Recovery_Min'].copy()
-            if 'LT1_Min' in runs_df.columns:
-                ax.bar(runs_df['Date'].dt.strftime('%m-%d'), runs_df['LT1_Min'], bottom=bottom_val, label='LT1', color='green', alpha=0.6)
-                bottom_val += runs_df['LT1_Min']
-            if 'LT2_Min' in runs_df.columns:
-                ax.bar(runs_df['Date'].dt.strftime('%m-%d'), runs_df['LT2_Min'], bottom=bottom_val, label='LT2', color='orange', alpha=0.8)
+            
+            # 1. Prepare data once to ensure alignment
+            # Force conversion to strings for the X-axis
+            x_labels = runs_df['Date'].dt.strftime('%m-%d').fillna('00-00').tolist()
+            
+            # Force numeric conversion for all Y-axis components
+            rec_vals = pd.to_numeric(runs_df['Recovery_Min'], errors='coerce').fillna(0).tolist()
+            lt1_vals = pd.to_numeric(runs_df['LT1_Min'], errors='coerce').fillna(0).tolist() if 'LT1_Min' in runs_df.columns else [0]*len(x_labels)
+            lt2_vals = pd.to_numeric(runs_df['LT2_Min'], errors='coerce').fillna(0).tolist() if 'LT2_Min' in runs_df.columns else [0]*len(x_labels)
+            
+            # 2. Plotting using the lists
+            # Recovery
+            ax.bar(x_labels, rec_vals, label='Recovery', color='gray', alpha=0.6)
+            
+            # LT1 (bottom = rec_vals)
+            ax.bar(x_labels, lt1_vals, bottom=rec_vals, label='LT1', color='green', alpha=0.6)
+            
+            # LT2 (bottom = rec + lt1)
+            bottom_lt2 = [r + l1 for r, l1 in zip(rec_vals, lt1_vals)]
+            ax.bar(x_labels, lt2_vals, bottom=bottom_lt2, label='LT2', color='orange', alpha=0.8)
+            
             ax.set_ylabel("Minutes")
             ax.legend(loc='upper left')
             plt.xticks(rotation=45)
             st.pyplot(fig)
             st.divider()
 
+            
             # --- CHART 2: FITNESS & FORM MODEL ---
             st.subheader("Impulse-Response Model (Fitness & Form)")
             fitness_df = calculate_metabolic_fitness(runs_df)
