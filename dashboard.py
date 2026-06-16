@@ -166,12 +166,12 @@ if menu == "📊 Dashboard":
     else:
         st.info("📊 Your training log is currently empty.")
 
-    # --- CHART 4: LACTATE CURVE PROFILE ---
+  # --- CHART 4: HYBRID LACTATE ENGINE (TRACKER & PREDICTOR) ---
     st.divider()
-    st.subheader("🩸 Lactate Curve Profile")
+    st.subheader("🩸 Hybrid Lactate Engine")
     lac_df = load_data(LACTATE_LOG)
     
-    if not lac_df.empty and 'Heart_Rate' in lac_df.columns and 'Pace' in lac_df.columns:
+    if not lac_df.empty and 'Heart_Rate' in lac_df.columns and 'Pace' in lac_df.columns and 'Date' in lac_df.columns:
         def parse_pace(pace_str):
             try:
                 parts = str(pace_str).split(':')
@@ -185,63 +185,160 @@ if menu == "📊 Dashboard":
             return f"{mins}:{secs:02d}"
 
         lac_df['Pace_Dec'] = lac_df['Pace'].apply(parse_pace)
-        lac_df = lac_df.sort_values('Heart_Rate') 
+        lac_df['Date'] = pd.to_datetime(lac_df['Date'])
+        test_dates = sorted(lac_df['Date'].dt.date.unique())
         
-        fig2, (ax_hr, ax_pace) = plt.subplots(1, 2, figsize=(14, 5))
-        
-        # 1. Lactate vs. Heart Rate
-        ax_hr.plot(lac_df['Heart_Rate'], lac_df['Lactate_mmol'], marker='o', color='red', linewidth=2)
-        
-        # Interpolate exact HR for 1.8 and 3.3 mmol
-        if lac_df['Lactate_mmol'].max() >= 1.8 and lac_df['Lactate_mmol'].min() <= 1.8:
-            lt1_hr = np.interp(1.8, lac_df['Lactate_mmol'], lac_df['Heart_Rate'])
-            ax_hr.axvline(x=lt1_hr, color='green', linestyle=':', alpha=0.8, label=f'LT1 HR: {int(lt1_hr)} BPM')
+        if len(test_dates) > 0:
+            # --- 1. AUTO-SUGGESTION LOGIC ---
+            # Suggest the oldest test within the last 120 days (start of the current macrocycle)
+            cutoff = test_dates[-1] - pd.Timedelta(days=120)
+            suggested_idx = next((i for i, d in enumerate(test_dates) if d >= cutoff), 0)
             
-        if lac_df['Lactate_mmol'].max() >= 3.3 and lac_df['Lactate_mmol'].min() <= 3.3:
-            lt2_hr = np.interp(3.3, lac_df['Lactate_mmol'], lac_df['Heart_Rate'])
-            ax_hr.axvline(x=lt2_hr, color='orange', linestyle=':', alpha=0.8, label=f'LT2 HR: {int(lt2_hr)} BPM')
-
-        ax_hr.axhline(y=1.8, color='green', linestyle='--', alpha=0.5, label='1.8 mmol Baseline')
-        ax_hr.axhline(y=3.3, color='orange', linestyle='--', alpha=0.5, label='3.3 mmol Baseline')
-        ax_hr.set_xlabel("Heart Rate (BPM)")
-        ax_hr.set_ylabel("Blood Lactate (mmol/L)")
-        ax_hr.set_title("Internal Cost (HR)")
-        ax_hr.legend()
-        ax_hr.grid(True, linestyle=':', alpha=0.6)
-
-        # 2. Lactate vs. Pace
-        lac_df = lac_df.sort_values('Pace_Dec', ascending=False)
-        ax_pace.plot(lac_df['Pace_Dec'], lac_df['Lactate_mmol'], marker='o', color='blue', linewidth=2)
-        
-        sorted_indices = np.argsort(lac_df['Lactate_mmol'].values)
-        sorted_lac = lac_df['Lactate_mmol'].values[sorted_indices]
-        sorted_pace = lac_df['Pace_Dec'].values[sorted_indices]
-        
-        # Interpolate exact Pace for 1.8 and 3.3 mmol
-        if sorted_lac.max() >= 1.8 and sorted_lac.min() <= 1.8:
-            lt1_pace_dec = np.interp(1.8, sorted_lac, sorted_pace)
-            ax_pace.axvline(x=lt1_pace_dec, color='green', linestyle=':', alpha=0.8, label=f'LT1 Pace: {format_pace(lt1_pace_dec)}')
+            st.markdown("### 1. Chronological Scrubber")
+            st.info("💡 **Baseline Suggestion:** The system has auto-selected the first test of your current 120-day macrocycle. You can manually override this below.")
             
-        if sorted_lac.max() >= 3.3 and sorted_lac.min() <= 3.3:
-            lt2_pace_dec = np.interp(3.3, sorted_lac, sorted_pace)
-            ax_pace.axvline(x=lt2_pace_dec, color='orange', linestyle=':', alpha=0.8, label=f'LT2 Pace: {format_pace(lt2_pace_dec)}')
+            col1, col2 = st.columns(2)
+            with col1:
+                baseline_date = st.selectbox("🔵 Baseline Test", options=test_dates, index=suggested_idx, format_func=lambda x: x.strftime('%b %d, %Y'))
+            with col2:
+                comp_date = st.selectbox("🔴 Current Status", options=test_dates, index=len(test_dates)-1, format_func=lambda x: x.strftime('%b %d, %Y'))
+            
+            # --- 2. THEORETICAL PREDICTOR ---
+            st.markdown("### 2. Predictive Simulator")
+            show_ghost = st.checkbox("🔮 Project Future Adaptation (Ghost Curve)")
+            shift_decimal = 0.0
+            
+            if show_ghost:
+                st.caption("Simulate the physiological rightward shift based on continued aerobic volume.")
+                p_col1, p_col2 = st.columns(2)
+                weeks_out = p_col1.slider("Additional Weeks of Base", 1, 12, 6)
+                vol_qual = p_col2.slider("Training Consistency Multiplier", 1.0, 5.0, 3.0, help="Higher consistency = greater rightward shift")
+                # Math: Approx 1.5 seconds per mile improvement per week at threshold, multiplied by quality factor
+                shift_decimal = (weeks_out * vol_qual * 1.5) / 60.0
 
-        ax_pace.axhline(y=1.8, color='green', linestyle='--', alpha=0.5)
-        ax_pace.axhline(y=3.3, color='orange', linestyle='--', alpha=0.5)
-        ax_pace.set_xlabel("Pace (Min/Mile)")
-        ax_pace.set_title("External Output (Pace)")
-        ax_pace.invert_xaxis() 
-        
-        ticks = ax_pace.get_xticks()
-        ax_pace.set_xticklabels([format_pace(t) for t in ticks])
-        ax_pace.legend()
-        ax_pace.grid(True, linestyle=':', alpha=0.6)
+            # --- 3. PLOTTING LOGIC ---
+            fig2, (ax_hr, ax_pace) = plt.subplots(1, 2, figsize=(14, 5))
+            summary_data = []
+            
+            dates_to_plot = [baseline_date]
+            if comp_date != baseline_date:
+                dates_to_plot.append(comp_date)
+                
+            for t_date in dates_to_plot:
+                day_df = lac_df[lac_df['Date'].dt.date == t_date].copy()
+                day_df_hr = day_df.sort_values('Heart_Rate')
+                day_df_pace = day_df.sort_values('Pace_Dec', ascending=False)
+                
+                is_latest = (t_date == comp_date)
+                line_alpha = 1.0 if is_latest else 0.4
+                line_style = '-' if is_latest else '--'
+                line_width = 3.0 if is_latest else 2.0
+                plot_color = 'red' if is_latest else 'blue'
+                label_prefix = "Current: " if is_latest else "Baseline: "
+                date_str = t_date.strftime('%Y-%m-%d')
+                
+                # HR Plot
+                ax_hr.plot(day_df_hr['Heart_Rate'], day_df_hr['Lactate_mmol'], marker='o', 
+                           linestyle=line_style, alpha=line_alpha, linewidth=line_width, color=plot_color, label=f"{label_prefix}{date_str}")
+                # Pace Plot
+                ax_pace.plot(day_df_pace['Pace_Dec'], day_df_pace['Lactate_mmol'], marker='o', 
+                             linestyle=line_style, alpha=line_alpha, linewidth=line_width, color=plot_color, label=f"{label_prefix}{date_str}")
+                
+                # Interpolate and label the exact 1.8 and 3.3 points
+                lt1_hr, lt2_hr, lt1_pace, lt2_pace = None, None, None, None
+                
+                if day_df_hr['Lactate_mmol'].max() >= 1.8 and day_df_hr['Lactate_mmol'].min() <= 1.8:
+                    lt1_hr = np.interp(1.8, day_df_hr['Lactate_mmol'], day_df_hr['Heart_Rate'])
+                if day_df_hr['Lactate_mmol'].max() >= 3.3 and day_df_hr['Lactate_mmol'].min() <= 3.3:
+                    lt2_hr = np.interp(3.3, day_df_hr['Lactate_mmol'], day_df_hr['Heart_Rate'])
+                    
+                s_lac = day_df_pace['Lactate_mmol'].values[np.argsort(day_df_pace['Lactate_mmol'].values)]
+                s_pace = day_df_pace['Pace_Dec'].values[np.argsort(day_df_pace['Lactate_mmol'].values)]
+                
+                if s_lac.max() >= 1.8 and s_lac.min() <= 1.8:
+                    lt1_pace_dec = np.interp(1.8, s_lac, s_pace)
+                    lt1_pace = format_pace(lt1_pace_dec)
+                if s_lac.max() >= 3.3 and s_lac.min() <= 3.3:
+                    lt2_pace_dec = np.interp(3.3, s_lac, s_pace)
+                    lt2_pace = format_pace(lt2_pace_dec)
+                    
+                summary_data.append({
+                    'State': 'Current' if is_latest else 'Baseline',
+                    'LT1 HR (1.8)': f"{int(lt1_hr)} BPM" if lt1_hr else "-",
+                    'LT1 Pace': lt1_pace if lt1_pace else "-",
+                    'LT2 HR (3.3)': f"{int(lt2_hr)} BPM" if lt2_hr else "-",
+                    'LT2 Pace': lt2_pace if lt2_pace else "-"
+                })
+                
+                # Vertical drop lines for Current test
+                if is_latest:
+                    if lt1_hr: ax_hr.axvline(x=lt1_hr, color='green', linestyle=':', alpha=0.8)
+                    if lt2_hr: ax_hr.axvline(x=lt2_hr, color='orange', linestyle=':', alpha=0.8)
+                    if lt1_pace: ax_pace.axvline(x=lt1_pace_dec, color='green', linestyle=':', alpha=0.8)
+                    if lt2_pace: ax_pace.axvline(x=lt2_pace_dec, color='orange', linestyle=':', alpha=0.8)
 
-        st.pyplot(fig2)
-        
+            # --- 4. PLOT THE GHOST CURVE ---
+            if show_ghost:
+                latest_df = lac_df[lac_df['Date'].dt.date == comp_date].copy()
+                latest_df_pace = latest_df.sort_values('Pace_Dec', ascending=False)
+                
+                # Shift the pace to the right (faster)
+                ghost_pace_dec = latest_df_pace['Pace_Dec'] - shift_decimal
+                
+                ax_pace.plot(ghost_pace_dec, latest_df_pace['Lactate_mmol'], marker='x', 
+                             linestyle=':', alpha=0.8, linewidth=2.5, color='purple', label=f"Projected Goal (+{weeks_out} wks)")
+                
+                # Interpolate Ghost Paces
+                s_lac_ghost = latest_df_pace['Lactate_mmol'].values[np.argsort(latest_df_pace['Lactate_mmol'].values)]
+                s_pace_ghost = ghost_pace_dec.values[np.argsort(latest_df_pace['Lactate_mmol'].values)]
+                
+                lt1_ghost_pace, lt2_ghost_pace = None, None
+                if s_lac_ghost.max() >= 1.8 and s_lac_ghost.min() <= 1.8:
+                    lt1_ghost_dec = np.interp(1.8, s_lac_ghost, s_pace_ghost)
+                    lt1_ghost_pace = format_pace(lt1_ghost_dec)
+                    ax_pace.axvline(x=lt1_ghost_dec, color='purple', linestyle=':', alpha=0.5)
+                if s_lac_ghost.max() >= 3.3 and s_lac_ghost.min() <= 3.3:
+                    lt2_ghost_dec = np.interp(3.3, s_lac_ghost, s_pace_ghost)
+                    lt2_ghost_pace = format_pace(lt2_ghost_dec)
+                    ax_pace.axvline(x=lt2_ghost_dec, color='purple', linestyle=':', alpha=0.5)
+
+                summary_data.append({
+                    'State': 'Projected Goal',
+                    'LT1 HR (1.8)': "N/A", # HR stays constant, pace gets faster
+                    'LT1 Pace': lt1_ghost_pace if lt1_ghost_pace else "-",
+                    'LT2 HR (3.3)': "N/A",
+                    'LT2 Pace': lt2_ghost_pace if lt2_ghost_pace else "-"
+                })
+
+            # --- Final Chart Formatting ---
+            ax_hr.axhline(y=1.8, color='green', linestyle='--', alpha=0.3)
+            ax_hr.axhline(y=3.3, color='orange', linestyle='--', alpha=0.3)
+            ax_hr.set_xlabel("Heart Rate (BPM)")
+            ax_hr.set_ylabel("Blood Lactate (mmol/L)")
+            ax_hr.legend(fontsize='small')
+            ax_hr.grid(True, linestyle=':', alpha=0.6)
+
+            ax_pace.axhline(y=1.8, color='green', linestyle='--', alpha=0.3)
+            ax_pace.axhline(y=3.3, color='orange', linestyle='--', alpha=0.3)
+            ax_pace.set_xlabel("Pace (Min/Mile)")
+            ax_pace.invert_xaxis() 
+            ax_pace.set_xticklabels([format_pace(t) for t in ax_pace.get_xticks()])
+            ax_pace.legend(fontsize='small')
+            ax_pace.grid(True, linestyle=':', alpha=0.6)
+
+            fig2.tight_layout()
+            st.pyplot(fig2)
+            
+            # Display the math
+            if summary_data:
+                st.dataframe(pd.DataFrame(summary_data).set_index('State'), use_container_width=True)
+                
+        else:
+            st.info("Log at least one more test to unlock the interactive progression scrubber!")
+            
     else:
         st.info("🩸 Your lactate log is empty or missing data columns.")
-
+        
 # ==========================================
 # 🔄 SYNC STRAVA
 # ==========================================
