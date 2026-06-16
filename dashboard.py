@@ -49,7 +49,8 @@ def load_data(worksheet_name):
         return pd.DataFrame()
 
 def save_data(df, worksheet_name):
-    conn.update(worksheet=worksheet_name, data=df)
+    """Overwrites the specific tab with the updated DataFrame"""
+    conn.update(spreadsheet=SHEET_URL, worksheet=worksheet_name, data=df)
     st.cache_data.clear()
 
 def calculate_metabolic_fitness(df):
