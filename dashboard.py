@@ -180,20 +180,24 @@ if st.session_state.logged_in:
             runs_df['Date'] = pd.to_datetime(runs_df['Date'])
             runs_df = runs_df.sort_values('Date')
             
-        # --- CHART 1: SEASONAL VOLUME ---
+      # --- CHART 1: SEASONAL VOLUME ---
             st.subheader("Seasonal Volume Trends")
+            
+            # 1. Clean and Group Data
+            # Drop entries without dates and sum multiple entries for the same day
+            plot_df = runs_df.dropna(subset=['Date']).copy()
+            plot_df = plot_df.groupby('Date')[['Recovery_Min', 'LT1_Min', 'LT2_Min']].sum().reset_index()
+            plot_df = plot_df.sort_values('Date')
+            
+            # 2. Prepare data for Matplotlib
+            x_labels = plot_df['Date'].dt.strftime('%m-%d').tolist()
+            rec_vals = pd.to_numeric(plot_df['Recovery_Min'], errors='coerce').fillna(0).tolist()
+            lt1_vals = pd.to_numeric(plot_df['LT1_Min'], errors='coerce').fillna(0).tolist() if 'LT1_Min' in plot_df.columns else [0]*len(x_labels)
+            lt2_vals = pd.to_numeric(plot_df['LT2_Min'], errors='coerce').fillna(0).tolist() if 'LT2_Min' in plot_df.columns else [0]*len(x_labels)
+            
+            # 3. Plotting
             fig, ax = plt.subplots(figsize=(10, 4))
             
-            # 1. Prepare data once to ensure alignment
-            # Force conversion to strings for the X-axis
-            x_labels = runs_df['Date'].dt.strftime('%m-%d').fillna('00-00').tolist()
-            
-            # Force numeric conversion for all Y-axis components
-            rec_vals = pd.to_numeric(runs_df['Recovery_Min'], errors='coerce').fillna(0).tolist()
-            lt1_vals = pd.to_numeric(runs_df['LT1_Min'], errors='coerce').fillna(0).tolist() if 'LT1_Min' in runs_df.columns else [0]*len(x_labels)
-            lt2_vals = pd.to_numeric(runs_df['LT2_Min'], errors='coerce').fillna(0).tolist() if 'LT2_Min' in runs_df.columns else [0]*len(x_labels)
-            
-            # 2. Plotting using the lists
             # Recovery
             ax.bar(x_labels, rec_vals, label='Recovery', color='gray', alpha=0.6)
             
@@ -207,9 +211,9 @@ if st.session_state.logged_in:
             ax.set_ylabel("Minutes")
             ax.legend(loc='upper left')
             plt.xticks(rotation=45)
+            plt.tight_layout() # Ensures labels don't get cut off
             st.pyplot(fig)
             st.divider()
-
             
             # --- CHART 2: FITNESS & FORM MODEL ---
             st.subheader("Impulse-Response Model (Fitness & Form)")
