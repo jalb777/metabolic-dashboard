@@ -182,40 +182,37 @@ if st.session_state.logged_in:
             runs_df['Date'] = pd.to_datetime(runs_df['Date'])
             runs_df = runs_df.sort_values('Date')
             
-    # --- CHART 1: SEASONAL VOLUME ---
+ # --- CHART 1: SEASONAL VOLUME ---
             st.subheader("Seasonal Volume Trends")
             
-            # Ensure Date is datetime
-            plot_df = runs_df.dropna(subset=['Date']).copy()
-            plot_df['Date'] = pd.to_datetime(plot_df['Date']) 
+            # 1. Prepare and Group Data
+            # Drop entries without dates and sum multiple entries for the same day
+            plot_df = runs_df.dropna(subset=['Date_Only']).copy()
+            plot_df = plot_df.groupby('Date_Only')[['Recovery_Min', 'LT1_Min', 'LT2_Min']].sum().reset_index()
+            plot_df = plot_df.sort_values('Date_Only')
             
-            # Group by the DATE (not the string)
-            plot_df = plot_df.groupby(plot_df['Date'].dt.date)[['Recovery_Min', 'LT1_Min', 'LT2_Min']].sum().reset_index()
-            plot_df = plot_df.sort_values('Date')
-            
-            # Prepare X-labels from the newly grouped Date
-            x_labels = [d.strftime('%m-%d') for d in plot_df['Date']]
-            rec_vals = pd.to_numeric(plot_df['Recovery_Min'], errors='coerce').fillna(0).tolist()
-            lt1_vals = pd.to_numeric(plot_df['LT1_Min'], errors='coerce').fillna(0).tolist() if 'LT1_Min' in plot_df.columns else [0]*len(x_labels)
-            lt2_vals = pd.to_numeric(plot_df['LT2_Min'], errors='coerce').fillna(0).tolist() if 'LT2_Min' in plot_df.columns else [0]*len(x_labels)
+            # 2. Extract lists for plotting (guaranteed to be same length)
+            x_labels = [d.strftime('%m-%d') for d in plot_df['Date_Only']]
+            rec_vals = plot_df['Recovery_Min'].fillna(0).tolist()
+            lt1_vals = plot_df['LT1_Min'].fillna(0).tolist()
+            lt2_vals = plot_df['LT2_Min'].fillna(0).tolist()
             
             # 3. Plotting
             fig, ax = plt.subplots(figsize=(10, 4))
             
-            # Recovery
+            # Stack the bars
             ax.bar(x_labels, rec_vals, label='Recovery', color='gray', alpha=0.6)
-            
-            # LT1 (bottom = rec_vals)
             ax.bar(x_labels, lt1_vals, bottom=rec_vals, label='LT1', color='green', alpha=0.6)
             
-            # LT2 (bottom = rec + lt1)
             bottom_lt2 = [r + l1 for r, l1 in zip(rec_vals, lt1_vals)]
             ax.bar(x_labels, lt2_vals, bottom=bottom_lt2, label='LT2', color='orange', alpha=0.8)
             
+            # Labels and styling
             ax.set_ylabel("Minutes")
             ax.legend(loc='upper left')
             plt.xticks(rotation=45)
-            plt.tight_layout() # Ensures labels don't get cut off
+            plt.tight_layout()
+            
             st.pyplot(fig)
             st.divider()
             
