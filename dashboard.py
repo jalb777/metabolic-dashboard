@@ -373,7 +373,7 @@ if st.session_state.logged_in:
             else:
                 st.info("Log at least one more test to unlock the interactive progression scrubber!")
         else:
-            st.info("🩸 Your lactate log is empty or missing data columns.")
+            st.info("🩸 Your lactate log is empty. Click 'Log a Lactate Test' on the left to continue.")
 
     # ==========================================
     # 🔄 SYNC STRAVA
