@@ -32,21 +32,30 @@ def hash_password(password):
     """Encrypts passwords so they are not plain-text in Google Sheets"""
     return hashlib.sha256(password.encode()).hexdigest()
 
+@st.cache_data(ttl=600)
 def load_data(worksheet_name):
-    """Pulls live data from the Google Sheet and filters for the active user"""
     try:
-        df = conn.read(spreadsheet=SHEET_URL, worksheet=worksheet_name, ttl=0)
-        df = df.dropna(how="all")
+        df = conn.read(spreadsheet=SHEET_URL, worksheet=worksheet_name)
+        # Strip whitespace from headers to prevent hidden key errors
+        df.columns = df.columns.str.strip()
         
-        # Filter physiological data so athletes only see their own curves
-        if worksheet_name in [RUN_LOG, LACTATE_LOG] and not df.empty and 'Athlete_ID' in df.columns:
-            if 'username' in st.session_state and st.session_state.username:
-                df = df[df['Athlete_ID'] == st.session_state.username]
-                
+        # Define required columns for your app logic
+        required_cols = ['Date', 'Aerobic_EF', 'Pace_Dec', 'Athlete_ID']
+        
+        if df.empty:
+            return pd.DataFrame(columns=required_cols)
+            
+        # Ensure Date column exists and is datetime
+        if 'Date' in df.columns:
+            df['Date'] = pd.to_datetime(df['Date'], errors='coerce')
+        
+        # Filter by user if applicable
+        if 'Athlete_ID' in df.columns and 'username' in st.session_state:
+            df = df[df['Athlete_ID'] == st.session_state.username]
+            
         return df
-    except Exception as e:
-        st.error(f"Failed to connect to database: {e}")
-        return pd.DataFrame()
+    except Exception:
+        return pd.DataFrame(columns=['Date', 'Aerobic_EF', 'Pace_Dec', 'Athlete_ID'])
 
 def save_data(df, worksheet_name):
     """Overwrites the specific tab with the updated DataFrame"""
@@ -272,14 +281,13 @@ if st.session_state.logged_in:
                     
                     with p_col1:
                         time_mode = st.radio("Timeline", ["Set Weeks", "Race Date"], horizontal=True)
-                        weeks_out = st.slider("Additional Base Weeks", 1, 24, 6) if time_mode == "Set Weeks" else max(1, (target_date - comp_date).days // 7)
+                        weeks_out = st.slider("Additional Weeks of Training", 1, 24, 6) if time_mode == "Set Weeks" else max(1, (target_date - comp_date).days // 7)
                         curr_mileage = st.number_input("Current Weekly Mileage", 20, 120, 50)
-                        planned_avg_mileage = curr_mileage + (st.number_input("Avg. Weekly Change", -10, 30, 5) / 2)
+                        planned_avg_mileage = curr_mileage + (st.number_input("Avg. Weekly Mileage Change", -10, 30, 5) / 2)
                         
                     with p_col2:
-                        lt2_min = st.number_input("Avg LT2 Minutes/Week", 0, 120, 40)
-                        vol_qual = st.slider("Consistency (1-5)", 1.0, 5.0, 3.0)
-
+                        lt2_min = st.number_input("Avg LT2 Minutes/Week", 0, 120, 50)
+                        vol_qual = st.slider("Consistency (1-5)", 1.0, 5.0, 4, step=0.5, help="The Consistency Multiplier (1.0 to 5.0)** acts as an efficiency scalar for your aerobic adaptation. 1 indicates burnout and poor recovery. 5 indicates robotic discipline with perfect execution. Reasonable standard is 3 to 4.5")
                     # --- ADVANCED CALIBRATION ENGINE ---
                     # 1. Diminishing Returns based on LT1 Pace
                     current_lt1_dec = 6.0 
@@ -296,6 +304,14 @@ if st.session_state.logged_in:
                     # We look at the slope of Aerobic_EF to see if you are becoming more economical
                     ef_trend_coeff = 1.0
                     runs_df = load_data(RUN_LOG).sort_values('Date')
+
+                    if not runs_df.empty and 'Date' in runs_df.columns:
+                        runs_df = runs_df.sort_values('Date')
+                    # ... your existing logic using runs_df ...
+                    else:
+                        st.info("Sync Strava data to populate your training trends.")
+                        runs_df = pd.DataFrame() # Fallback empty dataframe
+    
                     if len(runs_df) >= 4:
                         last_4 = runs_df.tail(4)
                         z = np.polyfit(range(len(last_4)), last_4['Aerobic_EF'], 1)
