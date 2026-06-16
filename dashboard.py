@@ -182,11 +182,15 @@ if st.session_state.logged_in:
             runs_df['Date'] = pd.to_datetime(runs_df['Date'])
             runs_df = runs_df.sort_values('Date')
             
- # --- CHART 1: SEASONAL VOLUME ---
+# --- CHART 1: SEASONAL VOLUME ---
             st.subheader("Seasonal Volume Trends")
             
-            # 1. Prepare and Group Data
-            # Drop entries without dates and sum multiple entries for the same day
+            # 1. Create the Date_Only column first!
+            # We ensure the original Date column is datetime, then extract the date part.
+            runs_df['Date'] = pd.to_datetime(runs_df['Date'], errors='coerce')
+            runs_df['Date_Only'] = runs_df['Date'].dt.date
+            
+            # 2. Now it is safe to drop and group
             plot_df = runs_df.dropna(subset=['Date_Only']).copy()
             plot_df = plot_df.groupby('Date_Only')[['Recovery_Min', 'LT1_Min', 'LT2_Min']].sum().reset_index()
             plot_df = plot_df.sort_values('Date_Only')
