@@ -287,7 +287,7 @@ if st.session_state.logged_in:
                         
                     with p_col2:
                         lt2_min = st.number_input("Avg LT2 Minutes/Week", 0, 120, 50)
-                        vol_qual = st.slider("Consistency (1-5)", 1.0, 5.0, 4, step=0.5, help="The Consistency Multiplier (1.0 to 5.0)** acts as an efficiency scalar for your aerobic adaptation. 1 indicates burnout and poor recovery. 5 indicates robotic discipline with perfect execution. Reasonable standard is 3 to 4.5")
+                        vol_qual = st.slider("Consistency (1-5)", 1.0, 5.0, 4.0, step=0.5, help="The Consistency Multiplier (1.0 to 5.0)** acts as an efficiency scalar for your aerobic adaptation. 1 indicates burnout and poor recovery. 5 indicates robotic discipline with perfect execution. Reasonable standard is 3 to 4.5")
                     # --- ADVANCED CALIBRATION ENGINE ---
                     # 1. Diminishing Returns based on LT1 Pace
                     current_lt1_dec = 6.0 
