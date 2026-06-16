@@ -165,9 +165,7 @@ if st.session_state.logged_in:
 
     if menu == "📊 Dashboard":
         runs_df = load_data(RUN_LOG)
-        st.title(f"{st.session_state.username.capitalize()}'s Training 
-        
-        Log Analyzer")
+        st.title(f"{st.session_state.username.capitalize()}'s Training Log Analyzer")
         
         if not runs_df.empty and 'Date' in runs_df.columns:
             runs_df['Date'] = pd.to_datetime(runs_df['Date'])
