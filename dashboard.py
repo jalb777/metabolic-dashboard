@@ -172,21 +172,49 @@ if st.session_state.logged_in:
         "🩸 Log Lactate Test"
     ])
 
-    if menu == "📊 Dashboard":
+   if menu == "📊 Dashboard":
         st.title(f"{st.session_state.username.capitalize()}'s Training Log Analyzer")
         runs_df = load_data(RUN_LOG)
-
+        
         if not runs_df.empty and 'Date' in runs_df.columns:
+            # 1. CLEANING & PREP (Mandatory)
             runs_df['Date'] = pd.to_datetime(runs_df['Date'], errors='coerce')
-            runs_df = runs_df.dropna(subset=['Date']).sort_values('Date')
+            runs_df = runs_df.dropna(subset=['Date'])
+            runs_df['Date_Only'] = runs_df['Date'].dt.date
+            runs_df = runs_df.sort_values('Date')
+            
+            # --- DEBUGGING ---
+            st.write("Unique dates in runs_df:", runs_df['Date_Only'].unique())
+            
+            # --- CHART 1: SEASONAL VOLUME ---
+            st.subheader("Seasonal Volume Trends")
+            
+            # Group by date
+            plot_df = runs_df.groupby('Date_Only', as_index=False)[['Recovery_Min', 'LT1_Min', 'LT2_Min']].sum()
+            plot_df = plot_df.sort_values('Date_Only')
+            
+            fig, ax = plt.subplots(figsize=(10, 4))
+            x_indices = np.arange(len(plot_df))
+            
+            rec = plot_df['Recovery_Min'].fillna(0).tolist()
+            lt1 = plot_df['LT1_Min'].fillna(0).tolist()
+            lt2 = plot_df['LT2_Min'].fillna(0).tolist()
+            
+            # Plot
+            ax.bar(x_indices, rec, label='Recovery', color='gray', alpha=0.6)
+            ax.bar(x_indices, lt1, bottom=rec, label='LT1', color='green', alpha=0.6)
+            bottom_lt2 = [r + l for r, l in zip(rec, lt1)]
+            ax.bar(x_indices, lt2, bottom=bottom_lt2, label='LT2', color='orange', alpha=0.8)
+            
+            ax.set_xticks(x_indices)
+            ax.set_xticklabels([d.strftime('%m-%d') for d in plot_df['Date_Only']], rotation=45)
+            ax.set_ylabel("Minutes")
+            ax.legend(loc='upper left')
+            plt.tight_layout()
+            st.pyplot(fig)
+            st.divider()
             
 # --- CHART 1: SEASONAL VOLUME ---
-            st.write("--- DEBUGGING DATA ---")
-            st.write(f"Total rows in runs_df: {len(runs_df)}")
-            st.write("Unique dates in runs_df:", runs_df['Date_Only'].unique())
-            st.write("Sample of the data being grouped:")
-            st.write(runs_df.head(10))
-
             st.subheader("Seasonal Volume Trends")
             
             # 1. Clean and Group
