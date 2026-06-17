@@ -173,151 +173,189 @@ if st.session_state.logged_in:
     ])
 
     if menu == "📊 Dashboard":
-            st.title(f"{st.session_state.username.capitalize()}'s Training Log Analyzer")
-            runs_df = load_data(RUN_LOG)
+        runs_df = load_data(RUN_LOG)
+        runs_df['Date'] = pd.to_datetime(runs_df['Date'], errors='coerce')
+        
+        st.title(f"{st.session_state.username.capitalize()}'s Training Log Analyzer")
+        
+        if not runs_df.empty and 'Date' in runs_df.columns:
+            runs_df['Date'] = pd.to_datetime(runs_df['Date'])
+            runs_df = runs_df.sort_values('Date')
             
-            if not runs_df.empty:
-                runs_df['Date'] = pd.to_datetime(runs_df['Date'], errors='coerce')
-                runs_df['Date_Only'] = runs_df['Date'].dt.date
-                
-                # --- CHART 1: SEASONAL VOLUME ---
-                st.subheader("Seasonal Volume Trends")
-                plot_df = runs_df.groupby('Date_Only')[['Recovery_Min', 'LT1_Min', 'LT2_Min']].sum().reset_index().sort_values('Date_Only')
-                
-                fig1, ax1 = plt.subplots(figsize=(10, 4))
-                x = np.arange(len(plot_df))
-                rec, lt1, lt2 = plot_df['Recovery_Min'].fillna(0), plot_df['LT1_Min'].fillna(0), plot_df['LT2_Min'].fillna(0)
-                ax1.bar(x, rec, label='Recovery', color='gray'); ax1.bar(x, lt1, bottom=rec, label='LT1', color='green')
-                ax1.bar(x, lt2, bottom=rec+lt1, label='LT2', color='orange')
-                ax1.set_xticks(x); ax1.set_xticklabels(plot_df['Date_Only'], rotation=45)
-                ax1.set_ylabel("Minutes"); ax1.legend()
-                st.pyplot(fig1)
-    
-                # --- CHART 2: LACTATE TRACKER ---
-                st.divider()
-                st.subheader("🩸 Lactate & HR Curve")
-                lac_df = load_data(LACTATE_LOG)
-                if not lac_df.empty:
-                    # Helper for pace
-                    lac_df['Pace_Dec'] = lac_df['Pace'].apply(lambda x: int(str(x).split(':')[0]) + int(str(x).split(':')[1])/60.0 if ':' in str(x) else 0.0)
-                    latest_date = lac_df['Date'].max()
-                    day_df = lac_df[lac_df['Date'] == latest_date].sort_values('Pace_Dec', ascending=False)
-                    
-                    fig2, ax2a = plt.subplots(figsize=(10, 4))
-                    ax2b = ax2a.twinx()
-                    ax2a.plot(day_df['Pace_Dec'], day_df['Lactate_mmol'], 'ro-', label='Lactate (mmol/L)')
-                    ax2b.plot(day_df['Pace_Dec'], day_df['Heart_Rate'], 'bo-', label='Heart Rate (BPM)')
-                    ax2a.invert_xaxis()
-                    ax2a.set_xlabel("Pace (Min/Mile)"); ax2a.set_ylabel("Lactate"); ax2b.set_ylabel("HR")
-                    ax2a.legend(loc='upper left'); ax2b.legend(loc='upper right')
-                    st.pyplot(fig2)
-    
-                # --- CHART 3: FITNESS & EF ---
-                st.divider()
-                st.subheader("Fitness & Efficiency")
-                col_a, col_b = st.columns(2)
-                with col_a:
-                    fit_df = calculate_metabolic_fitness(runs_df)
-                    fig3, ax3 = plt.subplots(); ax3.plot(fit_df['Date'], fit_df['Form']); st.pyplot(fig3)
-                with col_b:
-                    ef_df = runs_df[runs_df['Aerobic_EF'] > 0]
-                    fig4, ax4 = plt.subplots(); ax4.plot(ef_df['Date'], ef_df['Aerobic_EF'], 'p-'); st.pyplot(fig4)
-            else:
-                st.info("📊 Training log empty. Sync Strava or add a manual run.")
+# --- CHART 1: SEASONAL VOLUME ---
+            st.subheader("Seasonal Volume Trends")
             
-         # --- CHART 4: LACTATE TRACKER ---
+            # 1. Create the Date_Only column first!
+            # We ensure the original Date column is datetime, then extract the date part.
+            runs_df['Date'] = pd.to_datetime(runs_df['Date'], errors='coerce')
+            runs_df['Date_Only'] = runs_df['Date'].dt.date
+            
+            # 2. Now it is safe to drop and group
+            plot_df = runs_df.dropna(subset=['Date_Only']).copy()
+            plot_df = plot_df.groupby('Date_Only')[['Recovery_Min', 'LT1_Min', 'LT2_Min']].sum().reset_index()
+            plot_df = plot_df.sort_values('Date_Only')
+            
+            # 2. Extract lists for plotting (guaranteed to be same length)
+            x_labels = [d.strftime('%m-%d') for d in plot_df['Date_Only']]
+            rec_vals = plot_df['Recovery_Min'].fillna(0).tolist()
+            lt1_vals = plot_df['LT1_Min'].fillna(0).tolist()
+            lt2_vals = plot_df['LT2_Min'].fillna(0).tolist()
+            
+            # 3. Plotting
+            fig, ax = plt.subplots(figsize=(10, 4))
+            
+            # Stack the bars
+            ax.bar(x_labels, rec_vals, label='Recovery', color='gray', alpha=0.6)
+            ax.bar(x_labels, lt1_vals, bottom=rec_vals, label='LT1', color='green', alpha=0.6)
+            
+            bottom_lt2 = [r + l1 for r, l1 in zip(rec_vals, lt1_vals)]
+            ax.bar(x_labels, lt2_vals, bottom=bottom_lt2, label='LT2', color='orange', alpha=0.8)
+            
+            # Labels and styling
+            ax.set_ylabel("Minutes")
+            ax.legend(loc='upper left')
+            plt.xticks(rotation=45)
+            plt.tight_layout()
+            
+            st.pyplot(fig)
             st.divider()
-            st.subheader("🩸 Lactate Tracker")
-            lac_df = load_data(LACTATE_LOG)
             
-            if not lac_df.empty and 'Heart_Rate' in lac_df.columns and 'Pace' in lac_df.columns and 'Date' in lac_df.columns:
-                # Formatting Helpers
-                def parse_pace(pace_str):
-                    try:
-                        parts = str(pace_str).split(':')
-                        return int(parts[0]) + int(parts[1]) / 60.0
-                    except: return 0.0
-    
-                def format_pace(decimal_pace):
-                    mins = int(decimal_pace)
-                    secs = int((decimal_pace - mins) * 60)
-                    return f"{mins}:{secs:02d}"
-    
-                lac_df['Pace_Dec'] = lac_df['Pace'].apply(parse_pace)
-                lac_df['Date'] = pd.to_datetime(lac_df['Date'])
-                test_dates = sorted(lac_df['Date'].dt.date.unique())
+            # --- CHART 2: FITNESS & FORM MODEL ---
+            st.subheader("Impulse-Response Model (Fitness & Form)")
+            fitness_df = calculate_metabolic_fitness(runs_df)
+            if not fitness_df.empty:
+                fig_fit, ax_fit = plt.subplots(figsize=(10, 5))
+                ax_fit.plot(fitness_df['Date'], fitness_df['Fitness'], label='Fitness (42-Day)', color='blue', linewidth=2)
+                ax_fit.plot(fitness_df['Date'], fitness_df['Fatigue'], label='Fatigue (7-Day)', color='red', linewidth=1.5, linestyle='--')
+                ax_fit.fill_between(fitness_df['Date'], 0, fitness_df['Form'], where=(fitness_df['Form'] >= 0), color='green', alpha=0.3, label='Fresh')
+                ax_fit.fill_between(fitness_df['Date'], 0, fitness_df['Form'], where=(fitness_df['Form'] < 0), color='orange', alpha=0.3, label='Tired')
+                ax_fit.axhline(0, color='black', linewidth=1)
+                ax_fit.set_ylabel("Training Load Score")
+                ax_fit.legend(loc='upper left')
+                plt.xticks(rotation=45)
+                st.pyplot(fig_fit)
+
+                # --- COACHING INSIGHTS ---
+                st.divider()
+                st.subheader("💡 Automated Coaching Insights")
+                insights = generate_training_suggestions(fitness_df)
+                if insights:
+                    st.markdown(f"### Current State: {insights['status']}")
+                    st.info(insights['advice'])
+                    st.markdown(f"**Recommended Target for Next Session:** {insights['target_workout']}")
+
+            # --- CHART 3: AEROBIC EF ---
+            if 'Aerobic_EF' in runs_df.columns:
+                st.divider()
+                st.subheader("🫀 Aerobic Efficiency Factor (Base Progression)")
+                ef_df = runs_df[runs_df['Aerobic_EF'] > 0]
+                if not ef_df.empty:
+                    fig_ef, ax_ef = plt.subplots(figsize=(10, 3))
+                    ax_ef.plot(ef_df['Date'], ef_df['Aerobic_EF'], marker='o', color='purple', linewidth=2, label='Aerobic EF')
+                    z = np.polyfit(range(len(ef_df)), ef_df['Aerobic_EF'], 1)
+                    p = np.poly1d(z)
+                    ax_ef.plot(ef_df['Date'], p(range(len(ef_df))), linestyle='--', color='black', alpha=0.5, label='Macro Trend')
+                    ax_ef.set_ylabel("EF (Meters/Beat)")
+                    ax_ef.legend(loc='upper left')
+                    plt.xticks(rotation=45)
+                    st.pyplot(fig_ef)
+
+        else:
+            st.info("📊 Your training log is currently empty. Sync or add a run to get started.")
+
+     # --- CHART 4: LACTATE TRACKER ---
+        st.divider()
+        st.subheader("🩸 Lactate Tracker")
+        lac_df = load_data(LACTATE_LOG)
+        
+        if not lac_df.empty and 'Heart_Rate' in lac_df.columns and 'Pace' in lac_df.columns and 'Date' in lac_df.columns:
+            # Formatting Helpers
+            def parse_pace(pace_str):
+                try:
+                    parts = str(pace_str).split(':')
+                    return int(parts[0]) + int(parts[1]) / 60.0
+                except: return 0.0
+
+            def format_pace(decimal_pace):
+                mins = int(decimal_pace)
+                secs = int((decimal_pace - mins) * 60)
+                return f"{mins}:{secs:02d}"
+
+            lac_df['Pace_Dec'] = lac_df['Pace'].apply(parse_pace)
+            lac_df['Date'] = pd.to_datetime(lac_df['Date'])
+            test_dates = sorted(lac_df['Date'].dt.date.unique())
+            
+            if len(test_dates) > 0:
+                cutoff = test_dates[-1] - pd.Timedelta(days=120)
+                suggested_idx = next((i for i, d in enumerate(test_dates) if d >= cutoff), 0)
                 
-                if len(test_dates) > 0:
-                    cutoff = test_dates[-1] - pd.Timedelta(days=120)
-                    suggested_idx = next((i for i, d in enumerate(test_dates) if d >= cutoff), 0)
+                st.markdown("### 1. Chronological Scrubber")
+                col1, col2 = st.columns(2)
+                with col1:
+                    baseline_date = st.selectbox("🔵 Baseline Test", options=test_dates, index=suggested_idx, format_func=lambda x: x.strftime('%b %d, %Y'))
+                with col2:
+                    comp_date = st.selectbox("🔴 Current Status", options=test_dates, index=len(test_dates)-1, format_func=lambda x: x.strftime('%b %d, %Y'))
+                
+                st.markdown("### 2. Predictive Simulator")
+                show_ghost = st.checkbox("Enable Ghost Curve Projection")
+                
+                shift_decimal = 0.0
+                
+                if show_ghost:
+                    p_col1, p_col2 = st.columns(2)
+                    with p_col1:
+                        time_mode = st.radio("Timeline", ["Set Weeks", "Race Date"], horizontal=True)
+                        weeks_out = st.slider("Additional Weeks of Training", 1, 24, 6)
+                        curr_mileage = st.number_input("Current Weekly Mileage", 20, 120, 50)
+                        planned_avg_mileage = curr_mileage + (st.number_input("Avg. Weekly Mileage Change", -10, 30, 5) / 2)
+                    with p_col2:
+                        lt2_min = st.number_input("Avg LT2 Minutes/Week", 0, 120, 50)
+                        vol_qual = st.slider("Consistency (1-5)", 1.0, 5.0, 4.0, step=0.5, help="1=Burnout, 5=Robotic.")
+
+                    # --- CALIBRATION ENGINE ---
+                    latest_df = lac_df[lac_df['Date'].dt.date == comp_date].copy()
+                    current_lt1_dec = 6.0
+                    if not latest_df.empty:
+                        s_lac = latest_df['Lactate_mmol'].values[np.argsort(latest_df['Lactate_mmol'].values)]
+                        s_pace = latest_df['Pace_Dec'].values[np.argsort(latest_df['Lactate_mmol'].values)]
+                        if s_lac.max() >= 1.8 and s_lac.min() <= 1.8:
+                            current_lt1_dec = np.interp(1.8, s_lac, s_pace)
                     
-                    st.markdown("### 1. Chronological Scrubber")
-                    col1, col2 = st.columns(2)
-                    with col1:
-                        baseline_date = st.selectbox("🔵 Baseline Test", options=test_dates, index=suggested_idx, format_func=lambda x: x.strftime('%b %d, %Y'))
-                    with col2:
-                        comp_date = st.selectbox("🔴 Current Status", options=test_dates, index=len(test_dates)-1, format_func=lambda x: x.strftime('%b %d, %Y'))
+                    dim_coeff = (6.0 / current_lt1_dec) ** 1.5 
+                    runs_df = load_data(RUN_LOG)
+                    ef_trend_coeff = 1.0
+                    if len(runs_df) >= 4:
+                        last_4 = runs_df.tail(4)
+                        z = np.polyfit(range(len(last_4)), last_4['Aerobic_EF'], 1)
+                        ef_trend_coeff = 1.0 + (z[0] * 5)
                     
-                    st.markdown("### 2. Predictive Simulator")
-                    show_ghost = st.checkbox("Enable Ghost Curve Projection")
+                    total_time = (planned_avg_mileage * 10)
+                    pol_penalty = 1.0 if (lt2_min / total_time) < 0.20 else 0.85
                     
-                    shift_decimal = 0.0
+                    shift_decimal = (weeks_out * 1.2 * dim_coeff * ((planned_avg_mileage/curr_mileage)**0.5) * (vol_qual/3.0) * ef_trend_coeff * pol_penalty) / 60.0
+
+                # --- PLOTTING ---
+                fig2, (ax_hr, ax_pace) = plt.subplots(1, 2, figsize=(14, 5))
+                summary_data = []
+                for t_date in [baseline_date, comp_date]:
+                    day_df = lac_df[lac_df['Date'].dt.date == t_date].copy()
+                    is_latest = (t_date == comp_date)
+                    line_style, plot_color = ('-', 'red') if is_latest else ('--', 'blue')
                     
-                    if show_ghost:
-                        p_col1, p_col2 = st.columns(2)
-                        with p_col1:
-                            time_mode = st.radio("Timeline", ["Set Weeks", "Race Date"], horizontal=True)
-                            weeks_out = st.slider("Additional Weeks of Training", 1, 24, 6)
-                            curr_mileage = st.number_input("Current Weekly Mileage", 20, 120, 50)
-                            planned_avg_mileage = curr_mileage + (st.number_input("Avg. Weekly Mileage Change", -10, 30, 5) / 2)
-                        with p_col2:
-                            lt2_min = st.number_input("Avg LT2 Minutes/Week", 0, 120, 50)
-                            vol_qual = st.slider("Consistency (1-5)", 1.0, 5.0, 4.0, step=0.5, help="1=Burnout, 5=Robotic.")
-    
-                        # --- CALIBRATION ENGINE ---
-                        latest_df = lac_df[lac_df['Date'].dt.date == comp_date].copy()
-                        current_lt1_dec = 6.0
-                        if not latest_df.empty:
-                            s_lac = latest_df['Lactate_mmol'].values[np.argsort(latest_df['Lactate_mmol'].values)]
-                            s_pace = latest_df['Pace_Dec'].values[np.argsort(latest_df['Lactate_mmol'].values)]
-                            if s_lac.max() >= 1.8 and s_lac.min() <= 1.8:
-                                current_lt1_dec = np.interp(1.8, s_lac, s_pace)
-                        
-                        dim_coeff = (6.0 / current_lt1_dec) ** 1.5 
-                        runs_df = load_data(RUN_LOG)
-                        ef_trend_coeff = 1.0
-                        if len(runs_df) >= 4:
-                            last_4 = runs_df.tail(4)
-                            z = np.polyfit(range(len(last_4)), last_4['Aerobic_EF'], 1)
-                            ef_trend_coeff = 1.0 + (z[0] * 5)
-                        
-                        total_time = (planned_avg_mileage * 10)
-                        pol_penalty = 1.0 if (lt2_min / total_time) < 0.20 else 0.85
-                        
-                        shift_decimal = (weeks_out * 1.2 * dim_coeff * ((planned_avg_mileage/curr_mileage)**0.5) * (vol_qual/3.0) * ef_trend_coeff * pol_penalty) / 60.0
-    
-                    # --- PLOTTING ---
-                    fig2, (ax_hr, ax_pace) = plt.subplots(1, 2, figsize=(14, 5))
-                    summary_data = []
-                    for t_date in [baseline_date, comp_date]:
-                        day_df = lac_df[lac_df['Date'].dt.date == t_date].copy()
-                        is_latest = (t_date == comp_date)
-                        line_style, plot_color = ('-', 'red') if is_latest else ('--', 'blue')
-                        
-                        ax_hr.plot(day_df.sort_values('Heart_Rate')['Heart_Rate'], day_df.sort_values('Heart_Rate')['Lactate_mmol'], marker='o', linestyle=line_style, color=plot_color, label=f"{'Current' if is_latest else 'Baseline'}: {t_date}")
-                        ax_pace.plot(day_df.sort_values('Pace_Dec', ascending=False)['Pace_Dec'], day_df.sort_values('Pace_Dec', ascending=False)['Lactate_mmol'], marker='o', linestyle=line_style, color=plot_color)
-    
-                    if show_ghost:
-                        latest_df = lac_df[lac_df['Date'].dt.date == comp_date].sort_values('Pace_Dec', ascending=False)
-                        ax_pace.plot(latest_df['Pace_Dec'] - shift_decimal, latest_df['Lactate_mmol'], marker='x', linestyle=':', color='purple', label="Projected Goal", linewidth=2.5)
-    
-                    ax_hr.set_xlabel("HR (BPM)"); ax_hr.set_ylabel("Lactate (mmol/L)"); ax_hr.grid(True, linestyle=':')
-                    ax_pace.set_xlabel("Pace (Min/Mile)"); ax_pace.invert_xaxis(); ax_pace.grid(True, linestyle=':')
-                    ax_pace.set_xticklabels([format_pace(t) for t in ax_pace.get_xticks()])
-                    ax_hr.legend(); ax_pace.legend()
-                    
-                    st.pyplot(fig2)
-                    
+                    ax_hr.plot(day_df.sort_values('Heart_Rate')['Heart_Rate'], day_df.sort_values('Heart_Rate')['Lactate_mmol'], marker='o', linestyle=line_style, color=plot_color, label=f"{'Current' if is_latest else 'Baseline'}: {t_date}")
+                    ax_pace.plot(day_df.sort_values('Pace_Dec', ascending=False)['Pace_Dec'], day_df.sort_values('Pace_Dec', ascending=False)['Lactate_mmol'], marker='o', linestyle=line_style, color=plot_color)
+
+                if show_ghost:
+                    latest_df = lac_df[lac_df['Date'].dt.date == comp_date].sort_values('Pace_Dec', ascending=False)
+                    ax_pace.plot(latest_df['Pace_Dec'] - shift_decimal, latest_df['Lactate_mmol'], marker='x', linestyle=':', color='purple', label="Projected Goal", linewidth=2.5)
+
+                ax_hr.set_xlabel("HR (BPM)"); ax_hr.set_ylabel("Lactate (mmol/L)"); ax_hr.grid(True, linestyle=':')
+                ax_pace.set_xlabel("Pace (Min/Mile)"); ax_pace.invert_xaxis(); ax_pace.grid(True, linestyle=':')
+                ax_pace.set_xticklabels([format_pace(t) for t in ax_pace.get_xticks()])
+                ax_hr.legend(); ax_pace.legend()
+                
+                st.pyplot(fig2)
+                
     # ==========================================
     # 🔄 SYNC STRAVA
     # ==========================================
