@@ -173,33 +173,33 @@ if st.session_state.logged_in:
     ])
 
     if menu == "📊 Dashboard":
-        runs_df = load_data(RUN_LOG)
-        runs_df['Date'] = pd.to_datetime(runs_df['Date'], errors='coerce')
-        
         st.title(f"{st.session_state.username.capitalize()}'s Training Log Analyzer")
-        
+        runs_df = load_data(RUN_LOG)
+
         if not runs_df.empty and 'Date' in runs_df.columns:
-            runs_df['Date'] = pd.to_datetime(runs_df['Date'])
-            runs_df = runs_df.sort_values('Date')
+            runs_df['Date'] = pd.to_datetime(runs_df['Date'], errors='coerce')
+            runs_df = runs_df.dropna(subset=['Date']).sort_values('Date')
             
 # --- CHART 1: SEASONAL VOLUME ---
             st.subheader("Seasonal Volume Trends")
             
-            # 1. Create the Date_Only column first!
-            # We ensure the original Date column is datetime, then extract the date part.
-            runs_df['Date'] = pd.to_datetime(runs_df['Date'], errors='coerce')
-            runs_df['Date_Only'] = runs_df['Date'].dt.date
+            # 1. Force numeric types BEFORE grouping
+            cols_to_sum = ['Recovery_Min', 'LT1_Min', 'LT2_Min']
+            for col in cols_to_sum:
+                runs_df[col] = pd.to_numeric(runs_df[col], errors='coerce').fillna(0)
             
-            # 2. Now it is safe to drop and group
-            plot_df = runs_df.dropna(subset=['Date_Only']).copy()
-            plot_df = plot_df.groupby('Date_Only')[['Recovery_Min', 'LT1_Min', 'LT2_Min']].sum().reset_index()
+            # 2. Create Date_Only
+            runs_df['Date_Only'] = pd.to_datetime(runs_df['Date'], errors='coerce').dt.date
+            
+            # 3. Aggregate
+            plot_df = runs_df.dropna(subset=['Date_Only']).groupby('Date_Only', as_index=False)[cols_to_sum].sum()
             plot_df = plot_df.sort_values('Date_Only')
             
-            # 2. Extract lists for plotting (guaranteed to be same length)
+            # 4. Extract for plotting
             x_labels = [d.strftime('%m-%d') for d in plot_df['Date_Only']]
-            rec_vals = plot_df['Recovery_Min'].fillna(0).tolist()
-            lt1_vals = plot_df['LT1_Min'].fillna(0).tolist()
-            lt2_vals = plot_df['LT2_Min'].fillna(0).tolist()
+            rec_vals = plot_df['Recovery_Min'].tolist()
+            lt1_vals = plot_df['LT1_Min'].tolist()
+            lt2_vals = plot_df['LT2_Min'].tolist()
             
             # 3. Plotting
             fig, ax = plt.subplots(figsize=(10, 4))
