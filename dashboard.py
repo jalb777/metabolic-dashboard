@@ -172,58 +172,58 @@ if st.session_state.logged_in:
         "🩸 Log Lactate Test"
     ])
 
-if menu == "📊 Dashboard":
-        st.title(f"{st.session_state.username.capitalize()}'s Training Log Analyzer")
-        runs_df = load_data(RUN_LOG)
-        
-        if not runs_df.empty:
-            runs_df['Date'] = pd.to_datetime(runs_df['Date'], errors='coerce')
-            runs_df['Date_Only'] = runs_df['Date'].dt.date
+    if menu == "📊 Dashboard":
+            st.title(f"{st.session_state.username.capitalize()}'s Training Log Analyzer")
+            runs_df = load_data(RUN_LOG)
             
-            # --- CHART 1: SEASONAL VOLUME ---
-            st.subheader("Seasonal Volume Trends")
-            plot_df = runs_df.groupby('Date_Only')[['Recovery_Min', 'LT1_Min', 'LT2_Min']].sum().reset_index().sort_values('Date_Only')
-            
-            fig1, ax1 = plt.subplots(figsize=(10, 4))
-            x = np.arange(len(plot_df))
-            rec, lt1, lt2 = plot_df['Recovery_Min'].fillna(0), plot_df['LT1_Min'].fillna(0), plot_df['LT2_Min'].fillna(0)
-            ax1.bar(x, rec, label='Recovery', color='gray'); ax1.bar(x, lt1, bottom=rec, label='LT1', color='green')
-            ax1.bar(x, lt2, bottom=rec+lt1, label='LT2', color='orange')
-            ax1.set_xticks(x); ax1.set_xticklabels(plot_df['Date_Only'], rotation=45)
-            ax1.set_ylabel("Minutes"); ax1.legend()
-            st.pyplot(fig1)
-
-            # --- CHART 2: LACTATE TRACKER ---
-            st.divider()
-            st.subheader("🩸 Lactate & HR Curve")
-            lac_df = load_data(LACTATE_LOG)
-            if not lac_df.empty:
-                # Helper for pace
-                lac_df['Pace_Dec'] = lac_df['Pace'].apply(lambda x: int(str(x).split(':')[0]) + int(str(x).split(':')[1])/60.0 if ':' in str(x) else 0.0)
-                latest_date = lac_df['Date'].max()
-                day_df = lac_df[lac_df['Date'] == latest_date].sort_values('Pace_Dec', ascending=False)
+            if not runs_df.empty:
+                runs_df['Date'] = pd.to_datetime(runs_df['Date'], errors='coerce')
+                runs_df['Date_Only'] = runs_df['Date'].dt.date
                 
-                fig2, ax2a = plt.subplots(figsize=(10, 4))
-                ax2b = ax2a.twinx()
-                ax2a.plot(day_df['Pace_Dec'], day_df['Lactate_mmol'], 'ro-', label='Lactate (mmol/L)')
-                ax2b.plot(day_df['Pace_Dec'], day_df['Heart_Rate'], 'bo-', label='Heart Rate (BPM)')
-                ax2a.invert_xaxis()
-                ax2a.set_xlabel("Pace (Min/Mile)"); ax2a.set_ylabel("Lactate"); ax2b.set_ylabel("HR")
-                ax2a.legend(loc='upper left'); ax2b.legend(loc='upper right')
-                st.pyplot(fig2)
-
-            # --- CHART 3: FITNESS & EF ---
-            st.divider()
-            st.subheader("Fitness & Efficiency")
-            col_a, col_b = st.columns(2)
-            with col_a:
-                fit_df = calculate_metabolic_fitness(runs_df)
-                fig3, ax3 = plt.subplots(); ax3.plot(fit_df['Date'], fit_df['Form']); st.pyplot(fig3)
-            with col_b:
-                ef_df = runs_df[runs_df['Aerobic_EF'] > 0]
-                fig4, ax4 = plt.subplots(); ax4.plot(ef_df['Date'], ef_df['Aerobic_EF'], 'p-'); st.pyplot(fig4)
-        else:
-            st.info("📊 Training log empty. Sync Strava or add a manual run.")
+                # --- CHART 1: SEASONAL VOLUME ---
+                st.subheader("Seasonal Volume Trends")
+                plot_df = runs_df.groupby('Date_Only')[['Recovery_Min', 'LT1_Min', 'LT2_Min']].sum().reset_index().sort_values('Date_Only')
+                
+                fig1, ax1 = plt.subplots(figsize=(10, 4))
+                x = np.arange(len(plot_df))
+                rec, lt1, lt2 = plot_df['Recovery_Min'].fillna(0), plot_df['LT1_Min'].fillna(0), plot_df['LT2_Min'].fillna(0)
+                ax1.bar(x, rec, label='Recovery', color='gray'); ax1.bar(x, lt1, bottom=rec, label='LT1', color='green')
+                ax1.bar(x, lt2, bottom=rec+lt1, label='LT2', color='orange')
+                ax1.set_xticks(x); ax1.set_xticklabels(plot_df['Date_Only'], rotation=45)
+                ax1.set_ylabel("Minutes"); ax1.legend()
+                st.pyplot(fig1)
+    
+                # --- CHART 2: LACTATE TRACKER ---
+                st.divider()
+                st.subheader("🩸 Lactate & HR Curve")
+                lac_df = load_data(LACTATE_LOG)
+                if not lac_df.empty:
+                    # Helper for pace
+                    lac_df['Pace_Dec'] = lac_df['Pace'].apply(lambda x: int(str(x).split(':')[0]) + int(str(x).split(':')[1])/60.0 if ':' in str(x) else 0.0)
+                    latest_date = lac_df['Date'].max()
+                    day_df = lac_df[lac_df['Date'] == latest_date].sort_values('Pace_Dec', ascending=False)
+                    
+                    fig2, ax2a = plt.subplots(figsize=(10, 4))
+                    ax2b = ax2a.twinx()
+                    ax2a.plot(day_df['Pace_Dec'], day_df['Lactate_mmol'], 'ro-', label='Lactate (mmol/L)')
+                    ax2b.plot(day_df['Pace_Dec'], day_df['Heart_Rate'], 'bo-', label='Heart Rate (BPM)')
+                    ax2a.invert_xaxis()
+                    ax2a.set_xlabel("Pace (Min/Mile)"); ax2a.set_ylabel("Lactate"); ax2b.set_ylabel("HR")
+                    ax2a.legend(loc='upper left'); ax2b.legend(loc='upper right')
+                    st.pyplot(fig2)
+    
+                # --- CHART 3: FITNESS & EF ---
+                st.divider()
+                st.subheader("Fitness & Efficiency")
+                col_a, col_b = st.columns(2)
+                with col_a:
+                    fit_df = calculate_metabolic_fitness(runs_df)
+                    fig3, ax3 = plt.subplots(); ax3.plot(fit_df['Date'], fit_df['Form']); st.pyplot(fig3)
+                with col_b:
+                    ef_df = runs_df[runs_df['Aerobic_EF'] > 0]
+                    fig4, ax4 = plt.subplots(); ax4.plot(ef_df['Date'], ef_df['Aerobic_EF'], 'p-'); st.pyplot(fig4)
+            else:
+                st.info("📊 Training log empty. Sync Strava or add a manual run.")
             
      # --- CHART 4: LACTATE TRACKER ---
         st.divider()
