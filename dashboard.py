@@ -189,17 +189,18 @@ if st.session_state.logged_in:
             lt2 = plot_df['LT2_Min'].fillna(0).tolist()
             bottom_lt2 = [r + l for r, l in zip(rec, lt1)]
 
+            bar_width = 0.5
             fig1, ax1 = plt.subplots(figsize=(10, 4))
-            ax1.bar(x_idx, rec, label='Recovery', color='gray', alpha=0.6)
-            ax1.bar(x_idx, lt1, bottom=rec, label='LT1', color='green', alpha=0.6)
-            ax1.bar(x_idx, lt2, bottom=bottom_lt2, label='LT2', color='orange', alpha=0.8)
+            ax1.bar(x_idx, rec, width=bar_width, label='Recovery', color='gray', alpha=0.6)
+            ax1.bar(x_idx, lt1, width=bar_width, bottom=rec, label='LT1', color='green', alpha=0.6)
+            ax1.bar(x_idx, lt2, width=bar_width, bottom=bottom_lt2, label='LT2', color='orange', alpha=0.8)
             ax1.set_xticks(x_idx)
             ax1.set_xticklabels(x_labels, rotation=45, ha='right')
+            ax1.set_xlim(-0.75, max(len(x_idx) - 0.25, 0.75))
             ax1.set_ylabel("Minutes")
             ax1.legend(loc='upper left')
             plt.tight_layout()
             st.pyplot(fig1)
-            st.divider()
 
             # -------------------------------------------------------
             # CHART 2: LACTATE TRACKER (moved up, dual y-axis)
